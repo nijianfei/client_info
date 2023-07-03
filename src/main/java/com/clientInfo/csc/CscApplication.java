@@ -11,11 +11,12 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.http.ssl.SSLContexts;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-
+@EnableScheduling
 @SpringBootApplication
 public class CscApplication {
 

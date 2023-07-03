@@ -8,6 +8,7 @@ import com.clientInfo.csc.vo.ResultVo;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.PropertySource;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.bind.annotation.*;
@@ -18,6 +19,7 @@ import java.util.Objects;
 @Slf4j
 @CrossOrigin(origins = "*")
 @PropertySource(value = "classpath:application.properties", encoding = "utf-8")
+@DependsOn("filePropertiesSource")
 @RequestMapping("/verify")
 @RestController()
 public class AcTestController {
@@ -25,20 +27,16 @@ public class AcTestController {
     private String arpCommand;
     @Value("${serverIpCommand}")
     private String serverIpCommand;
-
     @Value("#{${cardStr}}")
-    private Map<String,String> cardStr;
-
+    private Map<String, String> cardStr;
     @Value("#{${qrcodeStrqrcodeStr}}")
-    private Map<String,String> qrcodeStr;
-
+    private Map<String, String> qrcodeStr;
     @Value("${touchSensingFlag}")
     private Boolean touchSensingFlag;
-
     @PostMapping("/card")
-    private Object card(HttpServletRequest request,@RequestParam Map<String,String> map) {
+    private Object card(HttpServletRequest request, @RequestBody Map<String, String> map) {
         String remoteAddr = IpUtil.getIpAddr(request);
-        log.info("card_接收到客户端{}请求",remoteAddr);
+        log.info("card_接收到客户端{}请求", remoteAddr);
         String serverLocalPublicIp = ArpUtil.getServerLocalPublicIp(serverIpCommand);
         ArpVo arpVo = ArpUtil.getClientInfo(remoteAddr, arpCommand);
         arpVo.setNodeServerIp(serverLocalPublicIp);
@@ -53,22 +51,26 @@ public class AcTestController {
     }
 
     @PostMapping("/qrcode")
-    private Object qrcode(HttpServletRequest request) {
+    private Object qrcode(HttpServletRequest request, @RequestBody Map<String, String> map) {
         String remoteAddr = IpUtil.getIpAddr(request);
-        log.info("qrcode_接收到客户端{}请求",remoteAddr);
+        log.info("qrcode_接收到客户端{}请求", remoteAddr);
         String serverLocalPublicIp = ArpUtil.getServerLocalPublicIp(serverIpCommand);
         ArpVo arpVo = ArpUtil.getClientInfo(remoteAddr, arpCommand);
         arpVo.setNodeServerIp(serverLocalPublicIp);
         log.info("qrcode_返回客户端信息：{}", JSONObject.toJSONString(arpVo));
-        if (touchSensingFlag) {
+        if (CollectionUtils.isEmpty(qrcodeStr)) {
+            return getResultVo();
+        }
+        if (Objects.nonNull(map.get("qrcode")) && Objects.nonNull(qrcodeStr.get(map.get("qrcode")))) {
             return getResultVo();
         }
         return new ResultVo("90");
     }
+
     @PostMapping("/touchSensing")
-    private Object touchSensing(HttpServletRequest request) {
+    private Object touchSensing(HttpServletRequest request, @RequestBody Map<String, String> map) {
         String remoteAddr = IpUtil.getIpAddr(request);
-        log.info("touchSensing_接收到客户端{}请求",remoteAddr);
+        log.info("touchSensing_接收到客户端{}请求", remoteAddr);
         String serverLocalPublicIp = ArpUtil.getServerLocalPublicIp(serverIpCommand);
         ArpVo arpVo = ArpUtil.getClientInfo(remoteAddr, arpCommand);
         arpVo.setNodeServerIp(serverLocalPublicIp);
@@ -80,15 +82,16 @@ public class AcTestController {
     }
 
     @PostMapping("/connect")
-    private Object connect(HttpServletRequest request) {
+    private Object connect(HttpServletRequest request, @RequestBody Map<String, String> map) {
         String remoteAddr = IpUtil.getIpAddr(request);
-        log.info("connect_接收到客户端{}请求",remoteAddr);
+        log.info("connect_接收到客户端{}请求", remoteAddr);
         String serverLocalPublicIp = ArpUtil.getServerLocalPublicIp(serverIpCommand);
         ArpVo arpVo = ArpUtil.getClientInfo(remoteAddr, arpCommand);
         arpVo.setNodeServerIp(serverLocalPublicIp);
         log.info("connect_返回客户端信息：{}", JSONObject.toJSONString(arpVo));
         return getResultVo();
     }
+
     private Object getResultVo() {
         return new ResultVo("70");
     }
