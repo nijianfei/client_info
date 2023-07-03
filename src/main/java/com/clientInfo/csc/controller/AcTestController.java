@@ -7,12 +7,15 @@ import com.clientInfo.csc.vo.ArpVo;
 import com.clientInfo.csc.vo.ResultVo;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.codec.binary.Base64;
+import org.apache.commons.lang3.time.DateUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.PropertySource;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Date;
 import java.util.Map;
 import java.util.Objects;
 
@@ -33,6 +36,7 @@ public class AcTestController {
     private Map<String, String> qrcodeStr;
     @Value("${touchSensingFlag}")
     private Boolean touchSensingFlag;
+
     @PostMapping("/card")
     private Object card(HttpServletRequest request, @RequestBody Map<String, String> map) {
         String remoteAddr = IpUtil.getIpAddr(request);
@@ -61,8 +65,15 @@ public class AcTestController {
         if (CollectionUtils.isEmpty(qrcodeStr)) {
             return getResultVo();
         }
-        if (Objects.nonNull(map.get("qrcode")) && Objects.nonNull(qrcodeStr.get(map.get("qrcode")))) {
-            return getResultVo();
+        if (Objects.nonNull(map.get("qrcode"))) {
+            String[] split = map.get("qrcode").split("_");
+            if (split.length == 2) {
+                String expiryDate = qrcodeStr.get(split[0]);
+                String qrcodeDate = new String(Base64.decodeBase64(split[1]));
+                if (Objects.nonNull(expiryDate) &&(Objects.equals(expiryDate,"0") || expiryDate.compareTo(qrcodeDate) >= 0)) {
+                    return getResultVo();
+                }
+            }
         }
         return new ResultVo("90");
     }
