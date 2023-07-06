@@ -34,7 +34,7 @@ public class AcTestController {
     private Map<String, String> cardStr;
     @Value("#{${qrcodeStrqrcodeStr}}")
     private Map<String, String> qrcodeStr;
-    @Value("${touchSensingFlag}")
+    @Value("#{touchSensingFlag}")
     private Boolean touchSensingFlag;
 
     @PostMapping("/card")
@@ -65,21 +65,14 @@ public class AcTestController {
         if (CollectionUtils.isEmpty(qrcodeStr)) {
             return getResultVo();
         }
-        if (Objects.nonNull(map.get("qrcode"))) {
-            String[] split = map.get("qrcode").split("_");
-            if (split.length == 2) {
-                String expiryDate = qrcodeStr.get(split[0]);
-                String qrcodeDate = new String(Base64.decodeBase64(split[1]));
-                if (Objects.nonNull(expiryDate) &&(Objects.equals(expiryDate,"0") || expiryDate.compareTo(qrcodeDate) >= 0)) {
-                    return getResultVo();
-                }
-            }
+        if (Objects.nonNull(map.get("qrcode")) && Objects.nonNull(cardStr.get(map.get("qrcode")))) {
+            return getResultVo();
         }
         return new ResultVo("90");
     }
 
     @PostMapping("/touchSensing")
-    private Object touchSensing(HttpServletRequest request, @RequestBody Map<String, String> map) {
+    private Object touchSensing(HttpServletRequest request) {
         String remoteAddr = IpUtil.getIpAddr(request);
         log.info("touchSensing_接收到客户端{}请求", remoteAddr);
         String serverLocalPublicIp = ArpUtil.getServerLocalPublicIp(serverIpCommand);
@@ -93,7 +86,7 @@ public class AcTestController {
     }
 
     @PostMapping("/connect")
-    private Object connect(HttpServletRequest request, @RequestBody Map<String, String> map) {
+    private Object connect(HttpServletRequest request) {
         String remoteAddr = IpUtil.getIpAddr(request);
         log.info("connect_接收到客户端{}请求", remoteAddr);
         String serverLocalPublicIp = ArpUtil.getServerLocalPublicIp(serverIpCommand);
