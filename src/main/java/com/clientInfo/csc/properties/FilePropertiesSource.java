@@ -36,7 +36,15 @@ public class FilePropertiesSource extends MapPropertySource {
     @Scheduled(fixedRate = 10_000)
     public void refreshSource() throws IOException {
         logger.info("开始读取配置文件 {}", CONFIG_FILE_NAME);
-        InputStream inputStream = getClass().getClassLoader().getResourceAsStream(CONFIG_FILE_NAME);
+        String path = System.getProperty("user.dir");
+        String fullName = path + File.separator + CONFIG_FILE_NAME;
+        File file = new File(fullName);
+        InputStream inputStream = null;
+        if (file.exists()) {
+            inputStream = new FileInputStream(file);
+        }else{
+            inputStream = getClass().getClassLoader().getResourceAsStream(CONFIG_FILE_NAME);
+        }
         if (inputStream == null) {
             throw new FileNotFoundException("配置文件 " + CONFIG_FILE_NAME + " 不存在");
         }

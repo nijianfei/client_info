@@ -1,21 +1,21 @@
 package com.clientInfo.csc.controller;
 
-import com.alibaba.fastjson2.JSONObject;
-import com.clientInfo.csc.utils.ArpUtil;
-import com.clientInfo.csc.utils.IpUtil;
-import com.clientInfo.csc.vo.ArpVo;
+import cn.hutool.http.HttpUtil;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.clientInfo.csc.vo.ResultVo;
+import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.codec.binary.Base64;
-import org.apache.commons.lang3.time.DateUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.PropertySource;
-import org.springframework.util.CollectionUtils;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Date;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
 
@@ -34,66 +34,82 @@ public class AcTestController {
     private Map<String, String> cardStr;
     @Value("#{${qrcodeStrqrcodeStr}}")
     private Map<String, String> qrcodeStr;
-    @Value("#{touchSensingFlag}")
+    @Value("${touchSensingFlag}")
     private Boolean touchSensingFlag;
+
+    @Value("${coreUrl}")
+    private String coreUrl;
 
     @PostMapping("/card")
     private Object card(HttpServletRequest request, @RequestBody Map<String, String> map) {
-        String remoteAddr = IpUtil.getIpAddr(request);
-        log.info("card_接收到客户端{}请求", remoteAddr);
-        String serverLocalPublicIp = ArpUtil.getServerLocalPublicIp(serverIpCommand);
-        ArpVo arpVo = ArpUtil.getClientInfo(remoteAddr, arpCommand);
-        arpVo.setNodeServerIp(serverLocalPublicIp);
-        log.info("card_返回客户端信息：{}", JSONObject.toJSONString(arpVo));
-        if (CollectionUtils.isEmpty(cardStr)) {
-            return getResultVo();
-        }
         if (Objects.nonNull(map.get("cardId")) && Objects.nonNull(cardStr.get(map.get("cardId")))) {
+            log.info("card_接收到客户端请求:{},本地验证通过！", JSONUtil.toJsonStr(map));
             return getResultVo();
         }
-        return new ResultVo("90");
+        try {
+            String postResult = HttpUtil.post(coreUrl + "card", JSONUtil.toJsonStr(map));
+            JSONObject parseResult = JSONUtil.parseObj(postResult);
+            String resultCls = parseResult.getStr("resultCls");
+            log.info("card_接收到客户端请求:{}，调用中台返回结果:{}", JSONUtil.toJsonStr(map), postResult);
+            return new ResultVo(resultCls);
+        } catch (Exception e) {
+            log.error("card_接收到客户端请求:{}，调用中台异常 --》", JSONUtil.toJsonStr(map), e);
+            return new ResultVo("90");
+        }
     }
 
     @PostMapping("/qrcode")
     private Object qrcode(HttpServletRequest request, @RequestBody Map<String, String> map) {
-        String remoteAddr = IpUtil.getIpAddr(request);
-        log.info("qrcode_接收到客户端{}请求", remoteAddr);
-        String serverLocalPublicIp = ArpUtil.getServerLocalPublicIp(serverIpCommand);
-        ArpVo arpVo = ArpUtil.getClientInfo(remoteAddr, arpCommand);
-        arpVo.setNodeServerIp(serverLocalPublicIp);
-        log.info("qrcode_返回客户端信息：{}", JSONObject.toJSONString(arpVo));
-        if (CollectionUtils.isEmpty(qrcodeStr)) {
+        if (Objects.nonNull(map.get("qrcode")) && Objects.nonNull(qrcodeStr.get(map.get("qrcode")))) {
+            log.info("qrcode_接收到客户端请求:{},本地验证通过！", JSONUtil.toJsonStr(map));
             return getResultVo();
         }
-        if (Objects.nonNull(map.get("qrcode")) && Objects.nonNull(cardStr.get(map.get("qrcode")))) {
-            return getResultVo();
+        try {
+            String postResult = HttpUtil.post(coreUrl + "qrcode", JSONUtil.toJsonStr(map));
+            JSONObject parseResult = JSONUtil.parseObj(postResult);
+            String resultCls = parseResult.getStr("resultCls");
+            log.info("qrcode_接收到客户端请求:{}，调用中台返回结果:{}", JSONUtil.toJsonStr(map), postResult);
+            return new ResultVo(resultCls);
+        } catch (Exception e) {
+            log.error("qrcode_接收到客户端请求:{}，调用中台异常 --》", JSONUtil.toJsonStr(map), e);
+            return new ResultVo("90");
         }
-        return new ResultVo("90");
     }
 
     @PostMapping("/touchSensing")
     private Object touchSensing(HttpServletRequest request) {
-        String remoteAddr = IpUtil.getIpAddr(request);
-        log.info("touchSensing_接收到客户端{}请求", remoteAddr);
-        String serverLocalPublicIp = ArpUtil.getServerLocalPublicIp(serverIpCommand);
-        ArpVo arpVo = ArpUtil.getClientInfo(remoteAddr, arpCommand);
-        arpVo.setNodeServerIp(serverLocalPublicIp);
-        log.info("touchSensing_返回客户端信息：{}", JSONObject.toJSONString(arpVo));
-        if (touchSensingFlag) {
-            return getResultVo();
-        }
-        return new ResultVo("90");
+        return new ResultVo("70");
     }
 
     @PostMapping("/connect")
     private Object connect(HttpServletRequest request) {
-        String remoteAddr = IpUtil.getIpAddr(request);
-        log.info("connect_接收到客户端{}请求", remoteAddr);
-        String serverLocalPublicIp = ArpUtil.getServerLocalPublicIp(serverIpCommand);
-        ArpVo arpVo = ArpUtil.getClientInfo(remoteAddr, arpCommand);
-        arpVo.setNodeServerIp(serverLocalPublicIp);
-        log.info("connect_返回客户端信息：{}", JSONObject.toJSONString(arpVo));
+        String param = null;
+        try {
+            param = getParams(request);
+            log.info("connect_接收到客户端请求:{}", param);
+            String postResult = HttpUtil.post(coreUrl + "connect", param);
+            log.info("connect_接收到客户端请求:{}，调用中台返回结果:{}", param, postResult);
+        } catch (Exception e) {
+            log.info("connect_接收到客户端请求:{},异常--》", param, e);
+        }
         return getResultVo();
+    }
+
+    private String getParams(HttpServletRequest request) {
+        StringBuilder sb = new StringBuilder();
+        try {
+            ServletInputStream inputStream = request.getInputStream();
+            InputStreamReader reader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
+            BufferedReader bfReader = new BufferedReader(reader);
+            String line;
+            while ((line = bfReader.readLine()) != null) {
+                sb.append(line);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        String str = sb.toString();
+        return str.replace(",}", "}");
     }
 
     private Object getResultVo() {
