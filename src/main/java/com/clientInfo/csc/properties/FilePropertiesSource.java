@@ -33,9 +33,9 @@ public class FilePropertiesSource extends MapPropertySource {
      * 从配置文件中读取配置，10s 更新一次
      */
     @PostConstruct
-    @Scheduled(fixedRate = 10_000)
+    @Scheduled(fixedRate = 300_000)
     public void refreshSource() throws IOException {
-        logger.info("开始读取配置文件 {}", CONFIG_FILE_NAME);
+//        logger.info("开始读取配置文件 {}", CONFIG_FILE_NAME);
         String path = System.getProperty("user.dir");
         String fullName = path + File.separator + CONFIG_FILE_NAME;
         File file = new File(fullName);

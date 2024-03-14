@@ -83,7 +83,7 @@ public class ArpUtil {
         }
         return serverIds.stream().collect(Collectors.joining(","));
     }
-    private static void initClientInfoMap(String arpCommand) {
+    public static Map<String, ArpVo> initClientInfoMap(String arpCommand) {
         ConcurrentHashMap<String, ArpVo> infoNewMap = new ConcurrentHashMap();
         String readText = execCmd(arpCommand);
         String[] lines = readText.split("\r\n");
@@ -101,6 +101,7 @@ public class ArpUtil {
         }
         infoMap = Collections.unmodifiableMap(infoNewMap);
         log.info("initClientInfoMap:-->{}", JSONObject.toJSONString(infoMap));
+        return infoMap;
     }
 
     private static String execCmd(String command) {
