@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONWriter;
 import com.clientInfo.csc.entity.PingEntity;
 import com.clientInfo.csc.entity.PingTaskEntity;
+import com.clientInfo.csc.entity.ServerStatusEntity;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -26,11 +27,15 @@ public class SurveillanceItem {
 
     private static ThreadPoolTaskExecutor executor;
 
+    public static ServerStatusEntity serverStatus;
+
     @Resource(name = "taskExecutor")
     private ThreadPoolTaskExecutor nonStaticExecutor;
 
     @Value("${ping.cmd}")
     private String nonStaticPingCmd;
+
+    public static Map<String, Process> processMap = new HashMap<>(16);
 
     @PostConstruct
     public void init() {
@@ -46,10 +51,12 @@ public class SurveillanceItem {
     }
 
     public static void ping(String ipAddress) {
+        Process process = null;
         try {
             Date startDate = new Date();
             System.out.println(ipAddress + "-开始时间：" + DateFormatUtils.format(startDate, "HH:mm:ss"));
-            Process process = Runtime.getRuntime().exec(pingCmd + " " + ipAddress);
+            process = Runtime.getRuntime().exec(pingCmd + " " + ipAddress);
+            processMap.put(ipAddress, process);
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), Charset.forName("GBK")));
             String line;
             PingTaskEntity pingTaskEntity = null;
@@ -71,7 +78,6 @@ public class SurveillanceItem {
                 }
             }
             int exitCode = process.waitFor(); // 等待命令执行完成并获取退出码
-
             if (exitCode == 0) {
                 System.out.println(ipAddress + "-Ping成功，网络稳定。");
             } else {
@@ -82,6 +88,10 @@ public class SurveillanceItem {
             System.out.println(ipAddress + "-结束时间：" + DateFormatUtils.format(endDate, "HH:mm:ss") + "-历史：" + (endDate.getTime() - startDate.getTime()) / 1000 + "秒钟");
         } catch (Exception e) {
             e.printStackTrace();
+        }finally {
+            if (process != null) {
+                process.destroy();
+            }
         }
     }
 }

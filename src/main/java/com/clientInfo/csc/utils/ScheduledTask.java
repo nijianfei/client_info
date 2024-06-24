@@ -6,20 +6,23 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONWriter;
+import com.beust.jcommander.internal.Maps;
 import com.clientInfo.csc.entity.*;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import oshi.hardware.HardwareAbstractionLayer;
 import oshi.software.os.OperatingSystem;
 
 import java.sql.Timestamp;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.*;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -42,8 +45,45 @@ public class ScheduledTask {
     @Autowired
     private CommonConfig commonConfig;
 
+    @Value("${node.type}")
+    private String nodeType;
+    @Value("${device.id}")
+    private String deviceId;
+    @Value("${out.net.ip}")
+    private String outNetIp;
+
+    @Value("${tk.net.ip}")
+    private String tkNetIp;
+
+    @Value("${out.time:5}")
+    private Integer outTime;
+    @Value("${ac.service.url}")
+    private String acServiceUrl;
+
+    //集群内另一节点内网IP
+    @Value("${other.node.inner.ip}")
+    private String otherNodeInnerIp;
+    //集群内另一节点外网IP
+    @Value("${other.node.out.ip}")
+    private String otherNodeOutIp;
+
+    @Autowired
+    private Environment environment;
+
     private SystemInfo systemInfo = null;
 
+    public static final String V_INNER = "V-inner";
+    public static final String V_OUT = "V-out";
+    public static final String R_INNER = "R-inner";
+    public static final String R_OUT = "R-out";
+    public static final Map<String, LocalDateTime> SELF_NET_STATUS = new HashMap<>();
+
+    static {
+        SELF_NET_STATUS.put(V_INNER, LocalDateTime.now());
+        SELF_NET_STATUS.put(V_OUT, LocalDateTime.now());
+        SELF_NET_STATUS.put(R_INNER, LocalDateTime.now());
+        SELF_NET_STATUS.put(R_OUT, LocalDateTime.now());
+    }
 
     /**
      * 线程池
@@ -54,15 +94,16 @@ public class ScheduledTask {
      * 30秒后执行，每隔5分钟执行, 单位：ms。
      * 获取监控进程
      */
-    @Scheduled(initialDelay = 60 * 1000L, fixedRate = 300 * 1000)
+//    @Scheduled(initialDelay = 60 * 1000L, fixedRate = 300 * 1000)
     public void showTask() {
         logger.info("ScheduledTask_showTask:{}", JSON.toJSONString(SurveillanceItem.recordMap, JSONWriter.Feature.PrettyFormat));
     }
 
+
     /**
      * 60秒后执行，每隔120秒执行, 单位：ms。
      */
-//    @Scheduled(initialDelay = 59 * 1000L, fixedRate = 120 * 1000)
+//    @Scheduled(initialDelay = 1 * 1000L, fixedRate = 5 * 1000)
     public void minTask() {
         List<AppInfo> APP_INFO_LIST_CP = new ArrayList<AppInfo>();
         APP_INFO_LIST_CP.addAll(appInfoList);
@@ -147,6 +188,7 @@ public class ScheduledTask {
                         appStateResList.add(appState);
                     }
                 }
+
                 jsonObject.put("appInfoList", appInfoResList);
                 jsonObject.put("appStateList", appStateResList);
             }
@@ -159,7 +201,8 @@ public class ScheduledTask {
             if (!StringUtils.isEmpty(logInfo.getInfoContent())) {
                 jsonObject.put("logInfo", logInfo);
             }
-            restUtil.post(commonConfig.getServerUrl() + "/wgcloud/agent/minTask", jsonObject);
+            logger.info("---------------\r\n" + JSON.toJSONString(jsonObject, JSONWriter.Feature.PrettyFormat));
+//            restUtil.post(commonConfig.getServerUrl() + "/wgcloud/agent/minTask", jsonObject);
         }
 
     }
@@ -198,5 +241,94 @@ public class ScheduledTask {
         }
     }
 
+    /**
+     * 30秒后执行，每隔1分钟执行, 单位：ms。
+     * 获取监控进程
+     */
+    @Scheduled(initialDelay = 5 * 1000L, fixedRate = 60 * 1000)
+    public void reportNetInfo() {
+        LocalDateTime now = LocalDateTime.now();
+        ServerStatusEntity serverStatus = new ServerStatusEntity();
 
+        LocalDateTime vInnerDate = SELF_NET_STATUS.get(V_INNER);
+        LocalDateTime vOutDate = SELF_NET_STATUS.get(V_OUT);
+        long vInnerSecondsDiff = Duration.between(vInnerDate, now).getSeconds();
+        System.out.println("V内网-当前时间差：" + vInnerSecondsDiff);
+        long vOutSecondsDiff = Duration.between(vOutDate, now).getSeconds();
+        System.out.println("V外网-当前时间差：" + vOutSecondsDiff);
+        boolean vFlagInner = vInnerSecondsDiff <= outTime;
+        boolean vFlagOut = vOutSecondsDiff <= outTime;
+
+        LocalDateTime rInnerDate = SELF_NET_STATUS.get(R_INNER);
+        LocalDateTime rOutDate = SELF_NET_STATUS.get(R_OUT);
+        long rInnerSecondsDiff = Duration.between(rInnerDate, now).getSeconds();
+        System.out.println("R内网-当前时间差：" + rInnerSecondsDiff);
+        long rOutSecondsDiff = Duration.between(rOutDate, now).getSeconds();
+        System.out.println("R外网-当前时间差：" + rOutSecondsDiff);
+        boolean rFlagInner = rInnerSecondsDiff <= outTime;
+        boolean rFlagOut = rOutSecondsDiff <= outTime;
+
+        logger.info("节点类型:{},集群状态:外网:{},内网:{},主机网络状态:外网:{},内网:{}",nodeType, vFlagOut, vFlagInner, rFlagOut, rFlagInner);
+        serverStatus.setvOutNetStatus(vFlagOut ? "0" : "-1");
+        serverStatus.setvInnerNetStatus(vFlagInner ? "0" : "-1");
+        serverStatus.setOutNetStatus(rFlagOut ? "0" : "-1");
+        serverStatus.setInnerNetStatus(rFlagInner ? "0" : "-1");
+        serverStatus.setNodeType(nodeType);
+
+        //如果是主节点
+        if (Objects.equals(nodeType, "Active")) {
+            //集群状态不一致
+            if (vFlagInner != vFlagOut) {
+                boolean standbyNetStatus = queryStandbyNodeNetStatus();
+                if (standbyNetStatus) {
+                    //备机网络正常,则停止本机所有集群节点
+                    logger.info("门禁集群状态不一致,停止本机所有集群节点");
+                    NlbUtil.stopNode("");
+                }
+            } else {
+                //集群状态一致,并且集群不可用 , 且 内外网正常
+                if (!vFlagInner && rFlagInner && rFlagOut) {
+                    Map<String, String> interfaceNameMap = NlbUtil.queryInterfaceName();
+                    for (String vip : interfaceNameMap.keySet()) {
+                        //自身集群状态
+                        String nodeStatus = NlbUtil.getNodeStatus(vip);
+                        //本节点非启动,则启动集群节点
+                        if (!Objects.equals("Started", nodeStatus)) {
+                            logger.info("本机内外网正常,集群内节点为{},启动本机所有集群节点",nodeStatus);
+                            NlbUtil.startNode(vip);
+                        }
+                    }
+                }
+            }
+        }
+
+        Map<String, String> strMap = Maps.newHashMap("moduleId", "RC_002", "clientId", deviceId, "content", JSON.toJSONString(serverStatus));
+        restUtil.postUrlParam(acServiceUrl, strMap);
+
+    }
+
+    private boolean queryStandbyNodeNetStatus() {
+        JSONObject out = null;
+        JSONObject inner = null;
+        try {
+            out = restUtil.get("http://" + otherNodeOutIp +":"+getPort()+ "/showStatus?targetId=" + R_OUT);
+            inner = restUtil.get("http://" + otherNodeOutIp +":"+getPort()+  "/showStatus?targetId=" + R_INNER);
+        } catch (Exception e) {
+            logger.error("queryStandbyNodeNetStatus_Exception_otherNodeOutIp:{}", otherNodeOutIp);
+            try {
+                out = restUtil.get("http://" + otherNodeInnerIp +":"+getPort()+  "/showStatus?targetId=" + R_OUT);
+                inner = restUtil.get("http://" + otherNodeInnerIp +":"+getPort()+  "/showStatus?targetId=" + R_INNER);
+            } catch (Exception ex) {
+                logger.error("queryStandbyNodeNetStatus_Exception_otherNodeOutIp:{}", otherNodeInnerIp);
+                return false;
+            }
+        }
+        Boolean oStatus = (Boolean) out.get("status");
+        Boolean iStatus = (Boolean) inner.get("status");
+        return oStatus && iStatus;
+    }
+
+    private String getPort(){
+        return environment.getProperty("local.server.port");
+    }
 }

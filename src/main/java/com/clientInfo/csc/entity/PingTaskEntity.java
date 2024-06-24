@@ -58,13 +58,16 @@ public class PingTaskEntity {
     }
 
     public void changeTime(String pingInfo){
-        String timeMs = pingInfo.split(" ")[4].substring(3).replace("ms", "");
-        int tMs = Integer.parseInt(timeMs);
-        if(this.maxTime < tMs){
-            this.maxTime = tMs;
-        }
-        if(this.minTime > tMs){
-            this.minTime = tMs;
+        String[] split = pingInfo.split(" ");
+        if (split.length >= 5) {
+            String timeMs = split[4].substring(3).replace("ms", "");
+            int tMs = Integer.parseInt(timeMs);
+            if(this.maxTime < tMs){
+                this.maxTime = tMs;
+            }
+            if(this.minTime > tMs){
+                this.minTime = tMs;
+            }
         }
     }
     public void addEntity(PingEntity entity){

@@ -2,23 +2,18 @@ package com.clientInfo.csc.utils;
 
 import com.alibaba.fastjson2.JSONObject;
 import com.clientInfo.csc.vo.ArpVo;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.util.CollectionUtils;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
-import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class ArpUtil {
-    private static Map<String, ArpVo> infoMap =  Map.of();
+    private static Map<String, ArpVo> infoMap = Map.of();
     private static Logger log = LoggerFactory.getLogger(ArpUtil.class);
     private static String arpCommand;
 
@@ -52,14 +47,14 @@ public class ArpUtil {
         return str;
     }
 
-    public static ArpVo getClientInfo(String remoteAddr,String arpCommand) {
+    public static ArpVo getClientInfo(String remoteAddr, String arpCommand) {
         ArpVo arpVo = infoMap.get(remoteAddr);
         if (Objects.isNull(arpVo)) {
-            synchronized (Object.class){
+            synchronized (Object.class) {
                 initClientInfoMap(arpCommand);
                 arpVo = infoMap.get(remoteAddr);
-                if (Objects.isNull(arpVo)){
-                    arpVo = Objects.nonNull(arpVo)?arpVo:ArpVo.builder().build();
+                if (Objects.isNull(arpVo)) {
+                    arpVo = Objects.nonNull(arpVo) ? arpVo : ArpVo.builder().build();
                 }
             }
         }
@@ -83,6 +78,7 @@ public class ArpUtil {
         }
         return serverIds.stream().collect(Collectors.joining(","));
     }
+
     public static Map<String, ArpVo> initClientInfoMap(String arpCommand) {
         ConcurrentHashMap<String, ArpVo> infoNewMap = new ConcurrentHashMap();
         String readText = execCmd(arpCommand);
@@ -104,23 +100,7 @@ public class ArpUtil {
         return infoMap;
     }
 
-    private static String execCmd(String command) {
-        try {
-            log.info("开始执行->[{}]命令", command);
-            Process exec = Runtime.getRuntime().exec(command);
-            InputStream inputStream = exec.getInputStream();
-            InputStream errorStream = exec.getErrorStream();
-            byte[] readAllBytes = inputStream.readAllBytes();
-            String accMsg = new String(readAllBytes, Charset.forName("GBK"));
-            log.info("返回结果：\r\n{}", accMsg);
-            byte[] readAllBytes2 = errorStream.readAllBytes();
-            String errMsg = new String(readAllBytes2, Charset.forName("GBK"));
-            if (StringUtils.isNotBlank(errMsg)) {
-                log.info("返回异常信息：{}", errMsg);
-            }
-            return accMsg;
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+    public static String execCmd(String command) {
+        return CmdUtil.execCmd(command);
     }
 }

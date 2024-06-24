@@ -35,11 +35,46 @@ class CscApplicationTests {
     private ThreadPoolTaskExecutor executor;
 
     public static void main(String[] args) {
-        String str = "来自 10.65.208.90 的回复: 字节=32 时间=16ms TTL=128";
-        String str1 = "来自 10.65.208.90 的回复: 字节=32 时间<1ms TTL=128";
-        String[] s = str.split(" ");
-        String[] s1 = str1.split(" ");
-        System.out.println(str.split(" ")[4].substring(3).replace("ms","")+" - "+s1[4].substring(3).replace("ms",""));
+
+        String testString = "NLB 群集控制实用程序 V2.6\n" +
+                "主机 2 在加入到群集后进入聚合状态 1 次，\n" +
+                "  上次聚合完成于大约: 2024/4/19 13:50:04\n" +
+                "作为群集的一部分，主机 2 已与下列主机作为默认值聚合:\n" +
+                "2";
+        String[] split = testString.split("\\n");
+        String s1 =split[1];
+        String s2 =split[2].trim();
+        String s4 =split[4];
+
+        LinkedList<String> lList = new LinkedList<>();
+        for (int i = 0; i < 10; i++) {
+            lList.add("a" + i);//向尾部增加元素
+        }
+        for (int i = 0; i < 10; i++) {
+            lList.push("p" + i);//向头部增加元素
+        }
+        for (int i = 0; i < 10; i++) {
+            lList.offer("off" + i);//向尾部增加元素
+        }
+
+        System.out.println("size:"+lList.size());
+        System.out.println("peek:"+lList.peek());//查看头部元素
+        System.out.println("element:"+lList.element());//查看头部元素
+        System.out.println("peekFirst:"+lList.peekFirst());//查看头部元素
+        System.out.println("peekLast:"+lList.peekLast());//查看尾部元素
+        System.out.println("size:"+lList.size());
+        System.out.println("poll:"+lList.poll());//查看并移除头部元素
+        System.out.println("pollFirst:"+lList.pollFirst());//查看并移除头部元素
+        System.out.println("pollLast:"+lList.pollLast());//查看并移除尾部元素
+        System.out.println("remove:"+lList.remove());//移除并返回头部元素
+        System.out.println("pop:"+lList.pop());//移除并返回头部元素
+        System.out.println("size:"+lList.size());
+        System.out.println("lList:"+ lList.toString());
+//        String str = "来自 10.65.208.90 的回复: 字节=32 时间=16ms TTL=128";
+//        String str1 = "来自 10.65.208.90 的回复: 字节=32 时间<1ms TTL=128";
+//        String[] s = str.split(" ");
+//        String[] s1 = str1.split(" ");
+//        System.out.println(str.split(" ")[4].substring(3).replace("ms","")+" - "+s1[4].substring(3).replace("ms",""));
 
     }
     @Test
@@ -103,7 +138,7 @@ class CscApplicationTests {
 
 
         //UDP
-        String ipAddress2 = "设备的IP地址";
+        String ipAddress2 = "10.65.208.33";
         int port = 22; // 例如：某个UDP服务端口
         int timeout = 5000; // 超时时间（毫秒）
         byte[] sendData = "ping".getBytes(); // 要发送的数据
