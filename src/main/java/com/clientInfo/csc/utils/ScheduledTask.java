@@ -13,12 +13,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import oshi.hardware.HardwareAbstractionLayer;
 import oshi.software.os.OperatingSystem;
 
+import java.net.InetAddress;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -45,42 +45,39 @@ public class ScheduledTask {
     @Autowired
     private CommonConfig commonConfig;
 
+    //节点类型 主或者备
     @Value("${node.type}")
     private String nodeType;
+    //终端设备ID
     @Value("${device.id}")
     private String deviceId;
-    @Value("${out.net.ip}")
-    private String outNetIp;
 
     @Value("${tk.net.ip}")
     private String tkNetIp;
-
-    @Value("${out.time:5}")
+    //网络超时设定
+    @Value("${out.time:15}")
     private Integer outTime;
     @Value("${ac.service.url}")
     private String acServiceUrl;
 
     //集群内另一节点内网IP
-    @Value("${other.node.inner.ip}")
-    private String otherNodeInnerIp;
+    @Value("${check.inner.ips}")
+    private String checkInnerIps;
     //集群内另一节点外网IP
-    @Value("${other.node.out.ip}")
-    private String otherNodeOutIp;
+    @Value("${check.out.ips}")
+    private String checkOutIps;
+    //是否检查改变集群节点状态
+    @Value("${is.check.cluster:false}")
+    private Boolean isCheckCluster;
 
-    @Autowired
-    private Environment environment;
 
     private SystemInfo systemInfo = null;
 
-    public static final String V_INNER = "V-inner";
-    public static final String V_OUT = "V-out";
     public static final String R_INNER = "R-inner";
     public static final String R_OUT = "R-out";
     public static final Map<String, LocalDateTime> SELF_NET_STATUS = new HashMap<>();
 
     static {
-        SELF_NET_STATUS.put(V_INNER, LocalDateTime.now());
-        SELF_NET_STATUS.put(V_OUT, LocalDateTime.now());
         SELF_NET_STATUS.put(R_INNER, LocalDateTime.now());
         SELF_NET_STATUS.put(R_OUT, LocalDateTime.now());
     }
@@ -88,7 +85,7 @@ public class ScheduledTask {
     /**
      * 线程池
      */
-    static ThreadPoolExecutor executor = new ThreadPoolExecutor(5, 10, 2, TimeUnit.MINUTES, new LinkedBlockingDeque<>());
+    static ThreadPoolExecutor executor = new ThreadPoolExecutor(5, 50, 10, TimeUnit.MINUTES, new LinkedBlockingDeque<>());
 
     /**
      * 30秒后执行，每隔5分钟执行, 单位：ms。
@@ -99,11 +96,10 @@ public class ScheduledTask {
         logger.info("ScheduledTask_showTask:{}", JSON.toJSONString(SurveillanceItem.recordMap, JSONWriter.Feature.PrettyFormat));
     }
 
-
     /**
      * 60秒后执行，每隔120秒执行, 单位：ms。
      */
-//    @Scheduled(initialDelay = 1 * 1000L, fixedRate = 5 * 1000)
+//    @Scheduled(initialDelay = 1 * 1000L, fixedRate = 1 * 1000)
     public void minTask() {
         List<AppInfo> APP_INFO_LIST_CP = new ArrayList<AppInfo>();
         APP_INFO_LIST_CP.addAll(appInfoList);
@@ -207,7 +203,6 @@ public class ScheduledTask {
 
     }
 
-
     /**
      * 30秒后执行，每隔5分钟执行, 单位：ms。
      * 获取监控进程
@@ -241,6 +236,26 @@ public class ScheduledTask {
         }
     }
 
+
+    @Scheduled(initialDelay = 2 * 1000L, fixedRate = 5 * 1000)
+    public void checkOneselfStatus() {
+        String[] innerIps = checkInnerIps.split(",");
+        Arrays.asList(innerIps).forEach(ip -> executor.execute(() -> {
+            if (isReachable(ip)) {
+                ScheduledTask.SELF_NET_STATUS.put(R_INNER, LocalDateTime.now());
+            }
+        }));
+
+        String[] outIps = checkOutIps.split(",");
+        Arrays.asList(outIps).forEach(ip -> executor.execute(() -> {
+            if (isReachable(ip)) {
+                ScheduledTask.SELF_NET_STATUS.put(R_OUT, LocalDateTime.now());
+            }
+        }));
+    }
+
+    private boolean netStatus = false;
+
     /**
      * 30秒后执行，每隔1分钟执行, 单位：ms。
      * 获取监控进程
@@ -249,54 +264,42 @@ public class ScheduledTask {
     public void reportNetInfo() {
         LocalDateTime now = LocalDateTime.now();
         ServerStatusEntity serverStatus = new ServerStatusEntity();
-
-        LocalDateTime vInnerDate = SELF_NET_STATUS.get(V_INNER);
-        LocalDateTime vOutDate = SELF_NET_STATUS.get(V_OUT);
-        long vInnerSecondsDiff = Duration.between(vInnerDate, now).getSeconds();
-        System.out.println("V内网-当前时间差：" + vInnerSecondsDiff);
-        long vOutSecondsDiff = Duration.between(vOutDate, now).getSeconds();
-        System.out.println("V外网-当前时间差：" + vOutSecondsDiff);
-        boolean vFlagInner = vInnerSecondsDiff <= outTime;
-        boolean vFlagOut = vOutSecondsDiff <= outTime;
-
         LocalDateTime rInnerDate = SELF_NET_STATUS.get(R_INNER);
         LocalDateTime rOutDate = SELF_NET_STATUS.get(R_OUT);
         long rInnerSecondsDiff = Duration.between(rInnerDate, now).getSeconds();
-        System.out.println("R内网-当前时间差：" + rInnerSecondsDiff);
+        System.out.println("R内网-当前时间差：" + rInnerSecondsDiff + "秒");
         long rOutSecondsDiff = Duration.between(rOutDate, now).getSeconds();
-        System.out.println("R外网-当前时间差：" + rOutSecondsDiff);
+        System.out.println("R外网-当前时间差：" + rOutSecondsDiff + "秒");
         boolean rFlagInner = rInnerSecondsDiff <= outTime;
         boolean rFlagOut = rOutSecondsDiff <= outTime;
-
-        logger.info("节点类型:{},集群状态:外网:{},内网:{},主机网络状态:外网:{},内网:{}",nodeType, vFlagOut, vFlagInner, rFlagOut, rFlagInner);
-        serverStatus.setvOutNetStatus(vFlagOut ? "0" : "-1");
-        serverStatus.setvInnerNetStatus(vFlagInner ? "0" : "-1");
+        logger.info("节点类型:{},是否检查集群状态:{},集主机网络状态:外网:{},内网:{}", nodeType, isCheckCluster, rFlagOut, rFlagInner);
         serverStatus.setOutNetStatus(rFlagOut ? "0" : "-1");
         serverStatus.setInnerNetStatus(rFlagInner ? "0" : "-1");
         serverStatus.setNodeType(nodeType);
 
-        //如果是主节点
-        if (Objects.equals(nodeType, "Active")) {
-            //集群状态不一致
-            if (vFlagInner != vFlagOut) {
-                boolean standbyNetStatus = queryStandbyNodeNetStatus();
-                if (standbyNetStatus) {
+        if (isCheckCluster) {
+            //如果是主节点
+            if (Objects.equals(nodeType, "Active")) {
+                //内外网状态不一致
+                if (rFlagOut != rFlagInner) {
                     //备机网络正常,则停止本机所有集群节点
                     logger.info("门禁集群状态不一致,停止本机所有集群节点");
                     NlbUtil.stopNode("");
-                }
-            } else {
-                //集群状态一致,并且集群不可用 , 且 内外网正常
-                if (!vFlagInner && rFlagInner && rFlagOut) {
-                    Map<String, String> interfaceNameMap = NlbUtil.queryInterfaceName();
-                    for (String vip : interfaceNameMap.keySet()) {
-                        //自身集群状态
-                        String nodeStatus = NlbUtil.getNodeStatus(vip);
-                        //本节点非启动,则启动集群节点
-                        if (!Objects.equals("Started", nodeStatus)) {
-                            logger.info("本机内外网正常,集群内节点为{},启动本机所有集群节点",nodeStatus);
-                            NlbUtil.startNode(vip);
+                    netStatus = false;
+                } else {
+                    //集群状态一致,并且集群不可用 , 且 内外网正常
+                    if (rFlagInner && rFlagOut && !netStatus) {
+                        Map<String, String> interfaceNameMap = NlbUtil.queryInterfaceName();
+                        for (String vip : interfaceNameMap.keySet()) {
+                            //自身集群状态
+                            String nodeStatus = NlbUtil.getNodeStatus(vip);
+                            //本节点非启动,则启动集群节点
+                            if (!Objects.equals("Started", nodeStatus)) {
+                                logger.info("本机内外网正常,集群内节点为{},启动本机所有集群节点", nodeStatus);
+                                NlbUtil.startNode(vip);
+                            }
                         }
+                        netStatus = true;
                     }
                 }
             }
@@ -307,28 +310,19 @@ public class ScheduledTask {
 
     }
 
-    private boolean queryStandbyNodeNetStatus() {
-        JSONObject out = null;
-        JSONObject inner = null;
+    private boolean isReachable(String ipAddress) {
         try {
-            out = restUtil.get("http://" + otherNodeOutIp +":"+getPort()+ "/showStatus?targetId=" + R_OUT);
-            inner = restUtil.get("http://" + otherNodeOutIp +":"+getPort()+  "/showStatus?targetId=" + R_INNER);
-        } catch (Exception e) {
-            logger.error("queryStandbyNodeNetStatus_Exception_otherNodeOutIp:{}", otherNodeOutIp);
-            try {
-                out = restUtil.get("http://" + otherNodeInnerIp +":"+getPort()+  "/showStatus?targetId=" + R_OUT);
-                inner = restUtil.get("http://" + otherNodeInnerIp +":"+getPort()+  "/showStatus?targetId=" + R_INNER);
-            } catch (Exception ex) {
-                logger.error("queryStandbyNodeNetStatus_Exception_otherNodeOutIp:{}", otherNodeInnerIp);
+            InetAddress address = InetAddress.getByName(ipAddress);
+            if (address.isReachable(3000)) {
+                logger.info("设备可达:{}", ipAddress);
+                return true;
+            } else {
+                logger.info("设备不可达:{}", ipAddress);
                 return false;
             }
+        } catch (Exception e) {
+            logger.error("测试[{}]网络异常:{}", ipAddress, e.getMessage(), e);
+            return false;
         }
-        Boolean oStatus = (Boolean) out.get("status");
-        Boolean iStatus = (Boolean) inner.get("status");
-        return oStatus && iStatus;
-    }
-
-    private String getPort(){
-        return environment.getProperty("local.server.port");
     }
 }

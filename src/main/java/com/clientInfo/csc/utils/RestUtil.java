@@ -3,6 +3,8 @@ package com.clientInfo.csc.utils;
 import cn.hutool.http.HttpUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONWriter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -54,6 +56,7 @@ public class RestUtil {
     }
 
     public String postUrlParam(String url,Map<String,String> urlParam) {
+        log.info("参数预览:\r\n{}", JSON.toJSONString(urlParam, JSONWriter.Feature.PrettyFormat));
         String paramsStr = null;
         Map<String, String> paramMap = new HashMap<>();
         paramMap.put("field", JSONUtil.toJsonStr(urlParam));

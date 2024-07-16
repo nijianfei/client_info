@@ -126,8 +126,6 @@ class CscApplicationTests {
             } else {
                 System.out.println("设备不可达");
             }
-
-
         } catch (UnknownHostException e) {
             e.printStackTrace();
         } catch (IOException e) {

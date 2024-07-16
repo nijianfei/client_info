@@ -13,6 +13,7 @@ import oshi.software.os.OSProcess;
 import oshi.software.os.OperatingSystem;
 import oshi.util.Util;
 import oshi.software.os.FileSystem;
+
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
@@ -197,9 +198,9 @@ public class OshiUtil {
             rxPacketsBegin += net.getPacketsRecv();
             txPacketsBegin += net.getPacketsSent();
         }
-
+        int second = 5;
         //暂停3秒
-        Thread.sleep(5000);
+        Thread.sleep(second * 1000);
         List<NetworkIF> listEnd = hal.getNetworkIFs();
         for (NetworkIF net : listEnd) {
             rxBytesEnd += net.getBytesRecv();
@@ -208,10 +209,10 @@ public class OshiUtil {
             txPacketsEnd += net.getPacketsSent();
         }
 
-        long rxBytesAvg = (rxBytesEnd - rxBytesBegin) / 3 / 1024;
-        long txBytesAvg = (txBytesEnd - txBytesBegin) / 3 / 1024;
-        long rxPacketsAvg = (rxPacketsEnd - rxPacketsBegin) / 3 / 1024;
-        long txPacketsAvg = (txPacketsEnd - txPacketsBegin) / 3 / 1024;
+        long rxBytesAvg = (rxBytesEnd - rxBytesBegin) / second / 1024;
+        long txBytesAvg = (txBytesEnd - txBytesBegin) / second / 1024;
+        long rxPacketsAvg = (rxPacketsEnd - rxPacketsBegin) / second / 1024;
+        long txPacketsAvg = (txPacketsEnd - txPacketsBegin) / second / 1024;
         NetIoState netIoState = new NetIoState();
         netIoState.setRxbyt(rxBytesAvg + "");
         netIoState.setTxbyt(txBytesAvg + "");
