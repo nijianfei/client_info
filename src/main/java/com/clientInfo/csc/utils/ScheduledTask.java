@@ -9,6 +9,7 @@ import com.alibaba.fastjson2.JSONWriter;
 import com.beust.jcommander.internal.Maps;
 import com.clientInfo.csc.entity.*;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.net.telnet.TelnetClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,7 +19,14 @@ import org.springframework.stereotype.Component;
 import oshi.hardware.HardwareAbstractionLayer;
 import oshi.software.os.OperatingSystem;
 
+import java.io.File;
+import java.io.IOException;
 import java.net.InetAddress;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -38,22 +46,36 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class ScheduledTask {
 
-    private Logger logger = LoggerFactory.getLogger(ScheduledTask.class);
+    private static Logger logger = LoggerFactory.getLogger(ScheduledTask.class);
     public static List<AppInfo> appInfoList = Collections.synchronizedList(new ArrayList<AppInfo>());
     @Autowired
     private RestUtil restUtil;
     @Autowired
     private CommonConfig commonConfig;
 
-    //节点类型 主或者备
+
+    //门禁WEB log 路径
+    @Value("${ac.web.log.path}")
+    private String acWebLogPath;
+
+    //门禁WEB log 路径
+    @Value("${script.check.web.full.name}")
+    private String scriptCheckWebFullName;
+
+    //节点类型 主或者备 MASTER BACKUP
     @Value("${node.type}")
     private String nodeType;
     //终端设备ID
     @Value("${device.id}")
     private String deviceId;
 
-    @Value("${tk.net.ip}")
+    //终端设备ID
+    @Value("${module.id}")
+    private String moduleId;
+    @Value("${tk.net.ip:0}")
     private String tkNetIp;
+    @Value("${tk.net.port:0}")
+    private Integer tkNetPort;
     //网络超时设定
     @Value("${out.time:15}")
     private Integer outTime;
@@ -70,15 +92,20 @@ public class ScheduledTask {
     @Value("${is.check.cluster:false}")
     private Boolean isCheckCluster;
 
+    @Value("${check.network.time.out:3000}")
+    private Integer checkNetworkTimeOut;
+
 
     private SystemInfo systemInfo = null;
 
     public static final String R_INNER = "R-inner";
+    public static final String R_TK = "R-tk";
     public static final String R_OUT = "R-out";
     public static final Map<String, LocalDateTime> SELF_NET_STATUS = new HashMap<>();
 
     static {
         SELF_NET_STATUS.put(R_INNER, LocalDateTime.now());
+        SELF_NET_STATUS.put(R_TK, LocalDateTime.now());
         SELF_NET_STATUS.put(R_OUT, LocalDateTime.now());
     }
 
@@ -236,6 +263,23 @@ public class ScheduledTask {
         }
     }
 
+    @Scheduled(initialDelay = 60 * 1000L, fixedRate = 30 * 60 * 1000)
+    public void checkAcWebStatus() {
+        for (int i = 0; i < 3; i++) {
+            if (!checkAcWeb()) {
+                //不正常 重启web ,然后再次验证
+                CmdUtil.execBatFile(scriptCheckWebFullName);
+                sleep(60 * 1000);
+            }
+        }
+    }
+
+    private void sleep(int millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+        }
+    }
 
     @Scheduled(initialDelay = 2 * 1000L, fixedRate = 5 * 1000)
     public void checkOneselfStatus() {
@@ -252,6 +296,13 @@ public class ScheduledTask {
                 ScheduledTask.SELF_NET_STATUS.put(R_OUT, LocalDateTime.now());
             }
         }));
+        if (!(Objects.equals("0", tkNetIp) || Objects.equals("0", tkNetPort))) {
+            executor.execute(() -> {
+                if (testTelnet(tkNetIp, tkNetPort)) {
+                    ScheduledTask.SELF_NET_STATUS.put(R_TK, LocalDateTime.now());
+                }
+            });
+        }
     }
 
     private boolean netStatus = false;
@@ -266,24 +317,31 @@ public class ScheduledTask {
         ServerStatusEntity serverStatus = new ServerStatusEntity();
         LocalDateTime rInnerDate = SELF_NET_STATUS.get(R_INNER);
         LocalDateTime rOutDate = SELF_NET_STATUS.get(R_OUT);
+        LocalDateTime rTaiKang = SELF_NET_STATUS.get(R_TK);
         long rInnerSecondsDiff = Duration.between(rInnerDate, now).getSeconds();
         System.out.println("R内网-当前时间差：" + rInnerSecondsDiff + "秒");
         long rOutSecondsDiff = Duration.between(rOutDate, now).getSeconds();
         System.out.println("R外网-当前时间差：" + rOutSecondsDiff + "秒");
+        long rTkSecondsDiff = Duration.between(rTaiKang, now).getSeconds();
+        System.out.println("R泰康网络-当前时间差：" + rTkSecondsDiff + "秒");
         boolean rFlagInner = rInnerSecondsDiff <= outTime;
         boolean rFlagOut = rOutSecondsDiff <= outTime;
-        logger.info("节点类型:{},是否检查集群状态:{},集主机网络状态:外网:{},内网:{}", nodeType, isCheckCluster, rFlagOut, rFlagInner);
+        boolean rFlagTk = rTkSecondsDiff <= outTime;
+        logger.info("节点类型:{},是否检查集群状态:{},网络状态:外网:{},内网:{},泰康网:{}", nodeType, isCheckCluster, rFlagOut, rFlagInner, rFlagTk);
         serverStatus.setOutNetStatus(rFlagOut ? "0" : "-1");
         serverStatus.setInnerNetStatus(rFlagInner ? "0" : "-1");
+        if (!(Objects.equals("0", tkNetIp) || Objects.equals("0", tkNetPort))) {
+            serverStatus.setTkNetStatus(rFlagTk ? "0" : "-1");
+        }
         serverStatus.setNodeType(nodeType);
 
         if (isCheckCluster) {
             //如果是主节点
-            if (Objects.equals(nodeType, "Active")) {
+            if (Objects.equals(nodeType, "MASTER")) {
                 //内外网状态不一致
                 if (rFlagOut != rFlagInner) {
                     //备机网络正常,则停止本机所有集群节点
-                    logger.info("门禁集群状态不一致,停止本机所有集群节点");
+                    logger.info("内外网状态不一致,停止本机所有集群节点");
                     NlbUtil.stopNode("");
                     netStatus = false;
                 } else {
@@ -294,7 +352,7 @@ public class ScheduledTask {
                             //自身集群状态
                             String nodeStatus = NlbUtil.getNodeStatus(vip);
                             //本节点非启动,则启动集群节点
-                            if (!Objects.equals("Started", nodeStatus)) {
+                            if (!Objects.equals("BACKUP", nodeStatus)) {
                                 logger.info("本机内外网正常,集群内节点为{},启动本机所有集群节点", nodeStatus);
                                 NlbUtil.startNode(vip);
                             }
@@ -305,23 +363,111 @@ public class ScheduledTask {
             }
         }
 
-        Map<String, String> strMap = Maps.newHashMap("moduleId", "RC_002", "clientId", deviceId, "content", JSON.toJSONString(serverStatus));
+        Map<String, String> strMap = Maps.newHashMap("moduleId", moduleId, "clientId", deviceId, "content", JSON.toJSONString(serverStatus));
         restUtil.postUrlParam(acServiceUrl, strMap);
 
+    }
+
+    private boolean checkAcWeb() {
+        try {
+            String fileName = getLastTimeFileName(acWebLogPath);
+            List<String> lines = Files.readAllLines(Paths.get(acWebLogPath, fileName), Charset.forName("utf-8"));
+            logger.info("在日志文件[{}]中共读取到[{}]行日志内容", fileName, lines.size());
+            if (!lines.isEmpty()) {
+                int lineSize = lines.size();
+                int fieldCount = 15;
+                int lineStart = 0;
+
+                int errCount = 0;
+                if (lineSize >= 10) {
+                    lineStart = lineSize - 1 - 10;
+                }
+                int checkLineCount = lineSize - lineStart - 1;
+                boolean lastStatus = true;
+                for (int i = lineStart; i < lineSize; i++) {
+                    String line = lines.get(i);
+                    String[] split = line.split(",");
+                    if (split.length == fieldCount) {
+                        if (!Objects.equals(split[10].trim(), "200")) {
+                            errCount++;
+                            lastStatus = false;
+                        }else{
+                            lastStatus = true;
+                        }
+                    }
+                }
+                logger.info("在日志文件[{}]中共读取到[{}]行日志内容,check最后[{}]行,发现[{}]行异常请求", fileName, lines.size(), checkLineCount, errCount);
+                return lastStatus;
+            }
+            return true;
+        } catch (IOException e) {
+            logger.error("读取weblog异常:{}", e.getMessage(), e);
+        }
+        return true;
+    }
+
+    private String getLastTimeFileName(String dir) {
+        logger.info("在路径:[{}]下查找最新创建的日志文件", dir);
+        File directory = new File(dir);
+        if (!(directory.exists() && directory.isDirectory())) {
+            throw new RuntimeException("文件不存在,或不是目录:" + dir);
+        }
+        File[] files = directory.listFiles();
+        if (files == null || files.length == 0) {
+            return null;
+        }
+
+        File latestFile = null;
+        long latestTime = Long.MIN_VALUE;
+
+        for (File file : files) {
+            if (file.isFile()) {
+                try {
+                    Path filePath = Paths.get(file.getAbsolutePath());
+                    BasicFileAttributes attr = Files.readAttributes(filePath, BasicFileAttributes.class);
+                    long fileTime = attr.creationTime().toMillis();
+                    if (fileTime > latestTime) {
+                        latestTime = fileTime;
+                        latestFile = file;
+                    }
+                } catch (IOException e) {
+                    // 处理文件读取异常，例如权限问题
+                    e.printStackTrace();
+                }
+            }
+        }
+        String fileName = latestFile.getName();
+        logger.info("在路径:[{}]下查找最新到创建的日志文件:[{}]", dir, fileName);
+        return fileName;
     }
 
     private boolean isReachable(String ipAddress) {
         try {
             InetAddress address = InetAddress.getByName(ipAddress);
-            if (address.isReachable(3000)) {
-                logger.info("设备可达:{}", ipAddress);
+            if (address.isReachable(checkNetworkTimeOut)) {
+//                logger.info("设备可达:{}", ipAddress);
                 return true;
             } else {
-                logger.info("设备不可达:{}", ipAddress);
+                logger.error("设备不可达:{}", ipAddress);
                 return false;
             }
         } catch (Exception e) {
             logger.error("测试[{}]网络异常:{}", ipAddress, e.getMessage(), e);
+            return false;
+        }
+    }
+
+    private boolean testTelnet(String ip, int port) {
+        String uri = ip + ":" + port;
+        try {
+            TelnetClient telnet = new TelnetClient();
+            telnet.setConnectTimeout(checkNetworkTimeOut);
+            telnet.connect(ip, port);
+//            logger.info("{} : 设备存活，连接成功！", uri);
+            telnet.disconnect();
+            return true;
+        } catch (Exception e) {
+            logger.error("设备[{}]可能不存活或无法连接：{}", uri, e.getMessage());
             return false;
         }
     }

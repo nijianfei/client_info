@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.net.telnet.TelnetClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
@@ -22,6 +23,9 @@ import java.awt.print.PrinterJob;
 import java.io.File;
 import java.io.IOException;
 import java.net.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -34,8 +38,12 @@ class CscApplicationTests {
     @Autowired
     private ThreadPoolTaskExecutor executor;
 
-    public static void main(String[] args) {
+    @Value("${script.check.web.full.name}")
+    private String scriptCheckWebFullName;
 
+    @Value("${arpCommand}")
+    private String arpCommand;
+    public static void main(String[] args) {
         String testString = "NLB 群集控制实用程序 V2.6\n" +
                 "主机 2 在加入到群集后进入聚合状态 1 次，\n" +
                 "  上次聚合完成于大约: 2024/4/19 13:50:04\n" +
@@ -103,16 +111,18 @@ class CscApplicationTests {
         }
     }
 
+    @Test
     void testTelnet(){
         //TELNET
-        String ipAddress1 = "设备的IP地址";
-        int port = 23; // 例如：23
-        int timeout = 5000; // 连接超时时间（毫秒）
+        String ipAddress1 = "127.0.0.1";
+        int port = 3389; // 例如：23
+        int timeout = 3000; // 连接超时时间（毫秒）
         try {
             TelnetClient telnet = new TelnetClient();
             telnet.setConnectTimeout(timeout);
             telnet.connect(ipAddress1, port);
             System.out.println("设备存活，连接成功！");
+            telnet.disconnect();
         } catch (Exception e) {
             System.out.println("设备可能不存活或无法连接：" + e.getMessage());
         }
@@ -208,5 +218,35 @@ class CscApplicationTests {
         }
     }
 
+    @Test
+    void testFileUtil(){
 
+        int value = LocalDateTime.now().getMonth().getValue();
+//        String monthStr = StringUtils.leftPad(String.valueOf(value), 2, '0');
+        String filePath = "D:\\test_log\\07\\ac_web0307.log"; // 替换为你的日志文件路径
+        try {
+            List<String> lines = Files.readAllLines(Paths.get(filePath));
+            if (!lines.isEmpty()) {
+                String firstLine = lines.get(0);
+                String[] split = firstLine.split(",");
+                int fieldCount = split.length;
+                for (String line : lines) {
+                    String[] split1 = line.split(",");
+                    int newCount = split1.length;
+                    if (fieldCount != newCount) {
+                        System.out.println(String.format("不同的字段个数:%s %s",fieldCount,newCount));
+                    }
+                    System.out.println(String.format("字段个数:%s ,接口状态: %s",fieldCount,split1[10]));
+                }
+                // 获取最后一行
+                String lastLine = lines.get(lines.size() - 1);
+                String[] split1 = lastLine.split(",");
+                System.out.println("文件的最后一行是: " + lastLine + "字段数:" + split1.length + "接口返回状态:" + split1[10]);
+            } else {
+                System.out.println("文件为空");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }

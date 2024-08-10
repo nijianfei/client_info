@@ -32,7 +32,7 @@ public class AcTestController {
     private String serverIpCommand;
     @Value("#{${cardStr}}")
     private Map<String, String> cardStr;
-    @Value("#{${qrcodeStrqrcodeStr}}")
+    @Value("#{${qrcodeStr}}")
     private Map<String, String> qrcodeStr;
     @Value("${touchSensingFlag}")
     private Boolean touchSensingFlag;

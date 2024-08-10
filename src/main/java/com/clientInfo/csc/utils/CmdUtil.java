@@ -34,4 +34,24 @@ public class CmdUtil {//Get-NlbClusterDriverInfo
         String cmd = "powershell.exe -Command \"" + command + "\"";
         return execCmd(cmd);
     }
+
+    public static boolean execBatFile(String fileFullName) {
+        String cmd = "cmd /c  " + fileFullName;
+        try {
+            Process process = Runtime.getRuntime().exec(cmd);
+            int exitCode = process.waitFor();
+
+            if (exitCode == 0) {
+                System.out.println("Success!");
+                return true;
+            } else {
+                // 错误处理
+                System.out.println("Something went wrong");
+                return false;
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+    }
 }
