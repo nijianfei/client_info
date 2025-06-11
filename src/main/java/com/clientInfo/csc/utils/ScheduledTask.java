@@ -31,6 +31,7 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -95,6 +96,14 @@ public class ScheduledTask {
     @Value("${check.network.time.out:3000}")
     private Integer checkNetworkTimeOut;
 
+    @Value("${check.network.time.out:3000}")
+    private String HostID;
+
+    @Value("${check.network.time.out:3000}")
+    private String Interface1;
+
+    @Value("${check.network.time.out:3000}")
+    private String Interface2;
 
     private SystemInfo systemInfo = null;
 
@@ -102,6 +111,7 @@ public class ScheduledTask {
     public static final String R_TK = "R-tk";
     public static final String R_OUT = "R-out";
     public static final Map<String, LocalDateTime> SELF_NET_STATUS = new HashMap<>();
+    private static Map<String, Map<String, String>> nodesStatusMap = new ConcurrentHashMap<>();
 
     static {
         SELF_NET_STATUS.put(R_INNER, LocalDateTime.now());
@@ -263,13 +273,15 @@ public class ScheduledTask {
         }
     }
 
-    @Scheduled(initialDelay = 60 * 1000L, fixedRate = 30 * 60 * 1000)
+    @Scheduled(initialDelay = 60 * 1000L, fixedRate = 5 * 60 * 1000)
     public void checkAcWebStatus() {
+        logger.debug("checkAcWebStatus执行线程: {}", Thread.currentThread().getName());
         for (int i = 0; i < 3; i++) {
             if (!checkAcWeb()) {
+                logger.debug("checkAcWebStatus存在异常开始执行脚本: {}", scriptCheckWebFullName);
                 //不正常 重启web ,然后再次验证
                 CmdUtil.execBatFile(scriptCheckWebFullName);
-                sleep(60 * 1000);
+                sleep(20 * 1000);
             }
         }
     }
@@ -281,8 +293,9 @@ public class ScheduledTask {
         }
     }
 
-    @Scheduled(initialDelay = 2 * 1000L, fixedRate = 5 * 1000)
+    @Scheduled(initialDelay = 2 * 1000L, fixedRate = 10 * 1000)
     public void checkOneselfStatus() {
+        logger.debug("checkOneselfStatus执行线程: {}", Thread.currentThread().getName());
         String[] innerIps = checkInnerIps.split(",");
         Arrays.asList(innerIps).forEach(ip -> executor.execute(() -> {
             if (isReachable(ip)) {
@@ -303,6 +316,12 @@ public class ScheduledTask {
                 }
             });
         }
+        executor.execute(() -> {
+            synchronized (Objects.class){
+                nodesStatusMap = NlbUtil.getNodesStatus();
+            }
+        });
+
     }
 
     private boolean netStatus = false;
@@ -311,8 +330,9 @@ public class ScheduledTask {
      * 30秒后执行，每隔1分钟执行, 单位：ms。
      * 获取监控进程
      */
-    @Scheduled(initialDelay = 5 * 1000L, fixedRate = 60 * 1000)
+    @Scheduled(initialDelay = 5 * 1000L, fixedRate = 59 * 1000)
     public void reportNetInfo() {
+        logger.debug("reportNetInfo执行线程: {}", Thread.currentThread().getName());
         LocalDateTime now = LocalDateTime.now();
         ServerStatusEntity serverStatus = new ServerStatusEntity();
         LocalDateTime rInnerDate = SELF_NET_STATUS.get(R_INNER);
@@ -334,10 +354,10 @@ public class ScheduledTask {
             serverStatus.setTkNetStatus(rFlagTk ? "0" : "-1");
         }
         serverStatus.setNodeType(nodeType);
-
         if (isCheckCluster) {
             //如果是主节点
             if (Objects.equals(nodeType, "MASTER")) {
+//                nodesStatusMap.get()
                 //内外网状态不一致
                 if (rFlagOut != rFlagInner) {
                     //备机网络正常,则停止本机所有集群节点
@@ -350,7 +370,7 @@ public class ScheduledTask {
                         Map<String, String> interfaceNameMap = NlbUtil.queryInterfaceName();
                         for (String vip : interfaceNameMap.keySet()) {
                             //自身集群状态
-                            String nodeStatus = NlbUtil.getNodeStatus(vip);
+                            String nodeStatus = NlbUtil.getNodeHostStatus(vip);
                             //本节点非启动,则启动集群节点
                             if (!Objects.equals("BACKUP", nodeStatus)) {
                                 logger.info("本机内外网正常,集群内节点为{},启动本机所有集群节点", nodeStatus);
@@ -368,6 +388,9 @@ public class ScheduledTask {
 
     }
 
+    private Map<String, Map<String, String>>  getByNodeId(){
+        return nodesStatusMap;
+    }
     private boolean checkAcWeb() {
         try {
             String fileName = getLastTimeFileName(acWebLogPath);
@@ -380,7 +403,7 @@ public class ScheduledTask {
 
                 int errCount = 0;
                 if (lineSize >= 10) {
-                    lineStart = lineSize - 1 - 10;
+                    lineStart = lineSize - 1 - 5;
                 }
                 int checkLineCount = lineSize - lineStart - 1;
                 boolean lastStatus = true;
@@ -391,7 +414,7 @@ public class ScheduledTask {
                         if (!Objects.equals(split[10].trim(), "200")) {
                             errCount++;
                             lastStatus = false;
-                        }else{
+                        } else {
                             lastStatus = true;
                         }
                     }

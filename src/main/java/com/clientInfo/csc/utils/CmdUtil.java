@@ -3,9 +3,12 @@ package com.clientInfo.csc.utils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.charset.Charset;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class CmdUtil {//Get-NlbClusterDriverInfo
@@ -39,19 +42,26 @@ public class CmdUtil {//Get-NlbClusterDriverInfo
         String cmd = "cmd /c  " + fileFullName;
         try {
             Process process = Runtime.getRuntime().exec(cmd);
-            int exitCode = process.waitFor();
-
-            if (exitCode == 0) {
-                System.out.println("Success!");
-                return true;
-            } else {
-                // 错误处理
-                System.out.println("Something went wrong");
+            boolean finished  = process.waitFor(5, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                System.out.println("命令超时终止");
                 return false;
+            } else {
+                // 读取输出流
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(process.getInputStream(), "GBK"))) {
+                    reader.lines().forEach(System.out::println);
+                }
+                // 读取输出流
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(process.getErrorStream(), "GBK"))) {
+                    reader.lines().forEach(System.out::println);
+                }
+                return true;
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-
     }
 }
