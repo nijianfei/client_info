@@ -44,6 +44,14 @@ class CscApplicationTests {
     @Value("${arpCommand}")
     private String arpCommand;
     public static void main(String[] args) {
+
+        try {
+            String hostName = InetAddress.getLocalHost().getHostName();
+            System.out.println("计算机名称: " + hostName); // 如 "Your-PC"
+        } catch (UnknownHostException e) {
+            e.printStackTrace(); // 处理解析失败异常
+        }
+
         String testString = "NLB 群集控制实用程序 V2.6\n" +
                 "主机 2 在加入到群集后进入聚合状态 1 次，\n" +
                 "  上次聚合完成于大约: 2024/4/19 13:50:04\n" +

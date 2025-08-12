@@ -107,6 +107,12 @@
             <artifactId>commons-net</artifactId>
             <version>3.8.0</version> <!-- 请检查并使用最新版本 -->
         </dependency>
+
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+            <version>3.6.0</version> <!-- 根据 Kafka 版本调整 -->
+        </dependency>
     </dependencies>
 
     <build>

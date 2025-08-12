@@ -11,7 +11,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.time.DateFormatUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -21,7 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
-@Component
+//@Component
 public class SurveillanceItem {
     private static String pingCmd;
 

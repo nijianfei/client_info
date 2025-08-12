@@ -30,9 +30,6 @@ public class ClientInfoController {
     @Value("${serverIpCommand}")
     private String serverIpCommand;
 
-    @Value("${base.bindIp}")
-    private String baseBindIp;
-
     @Value("${out.time:5}")
     private Integer outTime;
 

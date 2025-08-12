@@ -1,7 +1,12 @@
 package com.clientInfo.csc.utils;
 
+import cn.hutool.json.JSONUtil;
+import com.clientInfo.csc.entity.NlbClusterNodeInfo;
+import lombok.extern.slf4j.Slf4j;
+
 import java.util.*;
 
+@Slf4j
 public class NlbUtil {
     private static Map<String, String> ipToInterface = new HashMap<>();
 
@@ -42,29 +47,28 @@ public class NlbUtil {
     }
 
     //获取所有集群所有节点状态
-    public static Map<String, Map<String,String>> getNodesStatus() {
-        Map<String, Map<String,String>> nodeStatusMap = new HashMap<>();
+    public static Map<String, Map<String, NlbClusterNodeInfo>> getNodesStatus() {
+        Map<String, Map<String, NlbClusterNodeInfo>> nodeStatusMap = new HashMap<>();
         String readText = CmdUtil.execPowerShellCmd("Get-NlbClusterNode");
-        String[] lines = readText.split("\r\n");
-
+        String[] lines = readText.replaceAll("\r\n", "\n").split("\n");
         for (String line : lines) {
             if (!"".equals(line) && !line.contains("HostID") && !line.contains("------")) {
-                while (line.contains("  ")) {
-                    line.replaceAll("  ", " ");
-                }
+                line = line.replaceAll(" +", " ");
                 String[] kv = line.split(" ");
                 if (kv.length == 4) {
-                    String hostId = kv[3].trim();
-                    Map<String, String> hostIdMap = nodeStatusMap.get(hostId);
-                    if (Objects.isNull(hostIdMap)) {
-                        hostIdMap = new HashMap<>();
-                        nodeStatusMap.put(hostId, hostIdMap);
+                    NlbClusterNodeInfo nodeInfo = new NlbClusterNodeInfo(kv[0].trim(), kv[1].trim(), kv[2].trim(), kv[3].trim());
+                    String hostName = nodeInfo.getName();
+                    Map<String, NlbClusterNodeInfo> nodeMap = nodeStatusMap.get(hostName);
+                    if (Objects.isNull(nodeMap)) {
+                        nodeMap = new HashMap<>();
+                        nodeStatusMap.put(nodeInfo.getName(), nodeMap);
                     }
-                    String interfaceName = kv[2].trim();
-                    hostIdMap.put(interfaceName, kv[1].trim());
+                    nodeMap.put(nodeInfo.getInterfaceName(), nodeInfo);
                 }
             }
         }
+        String s = JSONUtil.toJsonStr(nodeStatusMap);
+        log.info("NLB执行结果：{}", s);
         return nodeStatusMap;
     }
 
@@ -96,6 +100,5 @@ public class NlbUtil {
 
         }
         return ipToInterface;
-
     }
 }
