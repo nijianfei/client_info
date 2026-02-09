@@ -1,0 +1,44 @@
+server.port = 8091
+base.serverUrl=http://localhost:9999
+base.bindIp=127.0.0.1
+base.wgToken=wgcloud
+
+
+core.pool.size=10
+max_pool.size=50
+queue.capacity=50
+keep.alive.seconds=60
+thread.name.prefix=Async-
+
+#服务器上报地址
+ac.service.url=http://10.16.206.100:9001/w/ac/RmWebService
+#check内网IP 已确认内网网络是否正常 交换机ip ,找几台设备
+check.inner.ips=172.16.0.1,172.16.0.100
+#check外网IP 已确认外网网络是否正常 网关  , 服务器IP
+check.out.ips=10.16.206.100,10.66.128.4
+# 节点状态:主节点 MASTER ,备节点:BACKUP
+node.type=MASTER
+#设备ID SER_ZX_A76_002(主),SER_ZX_A76_003(备)
+device.id=SER_ZX_A76_002
+#门禁节点服务器:RC_002
+module.id=RC_002
+#是否检查集群状态
+is.check.cluster=true
+
+tk.net.ip=127.0.0.1
+tk.net.port=8080
+check.network.time.out=3000
+ac.web.log.path=D:\\test_log\\07
+#script.check.web.full.name=D:\\360MoveData\\Users\\njf\\Desktop\\启动访客系统.bat
+script.check.web.full.name=中文
+
+ping.cmd=ping -n 60
+nlb.query.cmd=nlb query
+nlb.display.cmd=nlb display
+arpCommand = cmd /c arp -a | findstr 10.65.208 |findstr  /V \u63A5\u53E3
+serverIpCommand = cmd /c ipconfig | findstr IPv4 | findstr 10.65.
+
+spring.config.import=ac.properties
+
+
+

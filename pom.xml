@@ -113,6 +113,14 @@
             <artifactId>kafka-clients</artifactId>
             <version>3.6.0</version> <!-- 根据 Kafka 版本调整 -->
         </dependency>
+
+        <!-- OkHttp 核心库 -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>4.12.0</version> <!-- 最新稳定版 -->
+        </dependency>
+
     </dependencies>
 
     <build>
