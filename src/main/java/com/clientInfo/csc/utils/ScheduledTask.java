@@ -298,7 +298,8 @@ public class ScheduledTask {
                 } else {
                     /*本地异常与上次异常相同*/
                     if (webStatus.get(1)) {
-                        logger.debug("checkAcWebStatus-开始第【{}】次执行:存在【相同】异常，continue-脚本执行!", i);
+                        logger.debug("checkAcWebStatus-开始第【{}】次执行:存在【相同】异常，" +
+                                "continue-脚本执行!本次errTotalCount:{}", i, errTotalCount);
                         sleep(10 * 1000);
                         continue;
                     }
@@ -648,6 +649,7 @@ public class ScheduledTask {
             lineBuffer.reset();
         }
     }
+
     /**
      * 反转字节数组（倒序读取必须用）
      */
