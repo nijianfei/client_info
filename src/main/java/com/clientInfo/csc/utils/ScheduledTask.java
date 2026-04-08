@@ -8,6 +8,7 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONWriter;
 import com.beust.jcommander.internal.Maps;
 import com.clientInfo.csc.entity.*;
+import com.clientInfo.csc.vo.WebLogVo;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.net.telnet.TelnetClient;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -22,12 +23,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 import oshi.hardware.HardwareAbstractionLayer;
 import oshi.software.os.OperatingSystem;
 
 import java.io.*;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -55,7 +58,6 @@ public class ScheduledTask {
     private static Logger logger = LoggerFactory.getLogger(ScheduledTask.class);
     public static List<AppInfo> appInfoList = Collections.synchronizedList(new ArrayList<AppInfo>());
 
-    private static String lastErrMsgMd5 = "";
     @Autowired
     private RestUtil restUtil;
     @Autowired
@@ -98,16 +100,17 @@ public class ScheduledTask {
     private String checkOutIps;
     @Value("${check.network.time.out:3000}")
     private Integer checkNetworkTimeOut;
-    @Value("${check.max.read.line:5}")
+    @Value("${check.max.read.line:20}")
     private Integer checkMaxReadLine;
-    @Value("${check.network.time.out:3000}")
-    private String Interface1;
 
-    @Value("${restart.web.command}")
-    private String restartWebCommand;
+    @Value("${restart.web_site.command}")
+    private String restartWebSiteCommand;
 
     @Value("${restart.app_pool.command}")
     private String restartAppPoolCommand;
+
+    @Value("${iis.reset.command}")
+    private String iisResetCommand = "iisreset";
 
     private SystemInfo systemInfo = null;
 
@@ -275,33 +278,43 @@ public class ScheduledTask {
         }
     }
 
-    @Scheduled(initialDelay = 60 * 1000L, fixedRate = 5 * 60 * 1000)
+    private static int errTotalCount = 0;
+    private static final int TRY_COUNT = 3;
+
+    @Scheduled(initialDelay = 30 * 1000L, fixedRate = 30 * 1100L)
     public void checkAcWebStatus() {
-        int tryCount = 3;
+
         try {
             logger.debug("checkAcWebStatus执行线程: {}", Thread.currentThread().getName());
-            for (int i = 0; i < tryCount; i++) {
+            for (int i = 1; i <= TRY_COUNT; i++) {
                 List<Boolean> webStatus = checkAcWeb();
+                if (webStatus.isEmpty()) {
+                    logger.debug("checkAcWebStatus-第【{}】次执行:未找到日志文件，break", i);
+                }
                 if (webStatus.get(0)) {
-                    logger.debug("checkAcWebStatus-无异常，break");
+                    logger.debug("checkAcWebStatus-第【{}】次执行: 无异常，break", i);
+                    errTotalCount = 0;
                     break;
                 } else {
+                    /*本地异常与上次异常相同*/
                     if (webStatus.get(1)) {
-                        logger.debug("checkAcWebStatus存在相同异常，continue-开始第【{}】次执行脚本: {}", i, restartAppPoolCommand);
+                        logger.debug("checkAcWebStatus-开始第【{}】次执行:存在【相同】异常，continue-脚本执行!", i);
+                        sleep(10 * 1000);
                         continue;
                     }
-                    if (i == tryCount - 1) {
-                        logger.debug("checkAcWebStatus存在异常，开始第【{}】次执行脚本【START】: {}", i, restartAppPoolCommand);
-                        //不正常 重启web ,然后再次验证
-                        CmdUtil.execPowerShellCmd(restartAppPoolCommand);
-                        logger.debug("checkAcWebStatus存在异常，开始第【{}】次执行脚本【END】: {}", i, restartAppPoolCommand);
-                    } else {
-                        logger.debug("checkAcWebStatus存在异常，开始第【{}】次执行脚本【START】: {}", i, restartWebCommand);
-                        //不正常 重启web ,然后再次验证
-                        CmdUtil.execPowerShellCmd(restartWebCommand);
-                        logger.debug("checkAcWebStatus存在异常，开始第【{}】次执行脚本【END】: {}", i, restartWebCommand);
+                    logger.debug("checkAcWebStatus-开始第【{}】次执行:errTotalCount:{}", i, ++errTotalCount);
+                    if (errTotalCount >= TRY_COUNT * 2) {
+                        CmdUtil.execCmd(iisResetCommand);
+                        logger.debug("checkAcWebStatus-异常次数超过【{}】次，break", TRY_COUNT * 5);
+                        errTotalCount = 0;
+                        break;
                     }
-                    sleep(20 * 1000);
+                    logger.debug("checkAcWebStatus存在异常，开始第【{}】次执行脚本【START】: {}", i, restartAppPoolCommand);
+                    //不正常 重启web ,然后再次验证
+                    CmdUtil.execPowerShellCmd(restartAppPoolCommand);
+                    CmdUtil.execPowerShellCmd(restartWebSiteCommand);
+                    logger.debug("checkAcWebStatus存在异常，开始第【{}】次执行脚本【END】: {}", i, restartAppPoolCommand);
+                    sleep(10 * 1000);
                 }
             }
         } catch (Exception e) {
@@ -311,6 +324,7 @@ public class ScheduledTask {
 
     private void sleep(int millis) {
         try {
+            logger.debug("sleep:{}millis", millis);
             Thread.sleep(millis);
         } catch (InterruptedException e) {
         }
@@ -444,36 +458,56 @@ public class ScheduledTask {
         return isMaster;
     }
 
+    // 上次文件状态（用于快速判断）
+    private static String lastFileState = "";
+    // 上次最后N行MD5（用于精准判断）
+    private static String lastLinesMD5 = "";
+    private static boolean lastStatus = true;
+    private final static int FIELD_COUNT = 15;
+
     private List<Boolean> checkAcWeb() {
         try {
             String fileName = getLastTimeFileName(acWebLogPath);
-            List<String> lines = readLastNLines(Paths.get(acWebLogPath, fileName).toString(), 5);
-            logger.info("在日志文件[{}]中共读取到[{}]行日志内容", fileName, lines.size());
-            int fieldCount = 15;
+            if (StringUtils.isBlank(fileName)) {
+                return Collections.emptyList();
+            }
+            WebLogVo webLogVo = readIISLogLastLines(Paths.get(acWebLogPath, fileName).toString(), checkMaxReadLine);
+            // 判断文件是否变化
+            boolean fileChanged = !webLogVo.fileState.equals(lastFileState);
+            boolean contentChanged = !webLogVo.linesMD5.equals(lastLinesMD5);
             int errCount = 0;
-            String lErrMsgMd5 = "";
-            boolean lastStatus = true;
+            boolean status = true;
             boolean isSameErr = false;
-            for (String line : lines) {
-                String lineMd5 = MD5Utils.GetMD5Code(line);
-                String[] split = line.split(",");
-                if (split.length == fieldCount) {
-                    if (!Objects.equals(split[10].trim(), "200")) {
-                        errCount++;
-                        lastStatus = false;
-                        lErrMsgMd5 = lineMd5;
-                    } else {
-                        lastStatus = true;
+            List<String> lastLineContents = webLogVo.getLastLineContent();
+            if (fileChanged && contentChanged) {
+                logger.info("===== IIS Log [{}] 已更新 =====", fileName);
+                logger.info("在日志文件[{}]中,指定读取最后{}行,共读取到[{}]行日志内容", fileName, checkMaxReadLine, lastLineContents.size());
+                for (String line : lastLineContents) {
+                    String[] split = line.split(",");
+                    if (split.length == FIELD_COUNT) {
+                        if (!Objects.equals(split[10].trim(), "200")) {
+                            errCount++;
+                            status = false;
+                        } else {
+                            status = true;
+                        }
                     }
                 }
+                // 更新状态
+                lastFileState = webLogVo.fileState;
+                lastLinesMD5 = webLogVo.linesMD5;
+                logger.info("在日志文件[{}]中指定读取最后[{}]行日志内容,实际读取到[{}]行,发现[{}]行异常请求,最后一条请求状态[{}]", fileName, checkMaxReadLine, lastLineContents.size(), errCount, status);
+                lastStatus = status;
+            } else {
+                logger.info("IIS Log [{}] 未变化，上一次检查状态:{}，等待下一次检查...", fileName, lastStatus);
+                if (!lastStatus) {
+                    isSameErr = true;
+                }
             }
-            if (StringUtils.isNotBlank(lastErrMsgMd5) && Objects.equals(lastErrMsgMd5, lErrMsgMd5)) {
-                isSameErr = true;
-            }
-            lastErrMsgMd5 = lErrMsgMd5;
-            logger.info("在日志文件[{}]中指定读取最后[{}]行日志内容,实际读取到[{}]行,发现[{}]行异常请求,最后一条请求状态[{}]", fileName, checkMaxReadLine, lines.size(), errCount, lastStatus);
+            String lastLineContent = CollectionUtils.isEmpty(lastLineContents) ? "" : lastLineContents.get(lastLineContents.size() - 1);
+            logger.debug("在日志文件[{}]中,最后一行,请求内容:[{}]", fileName, lastLineContent);
             return List.of(lastStatus, isSameErr);
-        } catch (IOException e) {
+        } catch (Exception e) {
             logger.error("读取weblog异常:{}", e.getMessage(), e);
         }
         return List.of(true, true);
@@ -505,7 +539,7 @@ public class ScheduledTask {
                     }
                 } catch (IOException e) {
                     // 处理文件读取异常，例如权限问题
-                    e.printStackTrace();
+                    logger.error("文件读取异常:{}", e.getMessage(), e);
                 }
             }
         }
@@ -545,20 +579,90 @@ public class ScheduledTask {
         }
     }
 
-    private static List<String> readLastNLines(String filePath, int n) throws IOException {
-        try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
-            LinkedList<String> lines = new LinkedList<>(); // 使用链表高效移除首行
-            String line;
-            while ((line = reader.readLine()) != null) {
-                lines.add(line);
-                if (lines.size() > n) {
-                    lines.removeFirst(); // 保持列表最多n行
-                }
+    /**
+     * 读取IIS日志最后N行（专用优化版）
+     */
+    public static WebLogVo readIISLogLastLines(String logPath, int needLines) throws Exception {
+        File logFile = new File(logPath);
+        LinkedList<String> lastLines = new LinkedList<>();
+
+        // 1. 生成文件状态（0耗时，IIS日志有效）
+        String fileState = logFile.length() + "_" + logFile.lastModified();
+
+        try (RandomAccessFile raf = new RandomAccessFile(logFile, "r")) {
+            long fileLength = raf.length();
+            if (fileLength == 0) {
+                return new WebLogVo(lastLines, fileState, MD5Utils.GetMD5Code(""));
             }
-            return new ArrayList<>(lines);
+
+            long pointer = fileLength - 1;
+            ByteArrayOutputStream lineBuffer = new ByteArrayOutputStream();
+            boolean lastIsCR = false;
+
+            // 从后往前读取（IIS日志大文件也秒读）
+            while (pointer >= 0 && lastLines.size() < needLines) {
+                raf.seek(pointer);
+                int b = raf.read();
+
+                if (b == '\n') {
+                    // 遇到 \n，如果前一个不是 \r，则是一行的结束
+                    if (!lastIsCR && lineBuffer.size() > 0) {
+                        addLine(lineBuffer, lastLines);
+                    }
+                    lastIsCR = false;
+                } else if (b == '\r') {
+                    // 遇到 \r，标记并添加行（处理纯 \r 或 \r\n）
+                    if (lineBuffer.size() > 0) {
+                        addLine(lineBuffer, lastLines);
+                    }
+                    lastIsCR = true;
+                } else {
+                    lineBuffer.write(b);
+                    lastIsCR = false;
+                }
+                pointer--;
+            }
+
+            // 处理最后一行（文件开头没有换行符的情况）
+            if (lineBuffer.size() > 0 && lastLines.size() < needLines) {
+                addLine(lineBuffer, lastLines);
+            }
         }
+
+        // 2. 生成最后N行MD5（精准判断内容变化）
+        String content = String.join("\n", lastLines);
+        String linesMD5 = MD5Utils.GetMD5Code(content);
+
+        return new WebLogVo(lastLines, fileState, linesMD5);
     }
 
+    /**
+     * 解析一行日志（UTF-8编码，IIS日志默认编码）
+     */
+    private static void addLine(ByteArrayOutputStream lineBuffer, LinkedList<String> lastLines) {
+        if (lineBuffer.size() == 0) return;
+        try {
+            // IIS日志默认编码：UTF-8 / ASCII，都支持
+            lastLines.addFirst(new String(reverseBytes(lineBuffer.toByteArray()), StandardCharsets.UTF_8));
+        } finally {
+            lineBuffer.reset();
+        }
+    }
+    /**
+     * 反转字节数组（倒序读取必须用）
+     */
+    private static byte[] reverseBytes(byte[] bytes) {
+        int left = 0;
+        int right = bytes.length - 1;
+        while (left < right) {
+            byte temp = bytes[left];
+            bytes[left] = bytes[right];
+            bytes[right] = temp;
+            left++;
+            right--;
+        }
+        return bytes;
+    }
 
     private static boolean flag = true;
 

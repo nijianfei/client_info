@@ -25,7 +25,7 @@ public class CmdUtil {//Get-NlbClusterDriverInfo
             byte[] readAllBytes2 = errorStream.readAllBytes();
             String errMsg = new String(readAllBytes2, Charset.forName("GBK"));
             if (StringUtils.isNotBlank(errMsg)) {
-                log.info("返回异常信息：{}", errMsg);
+                log.error("返回异常信息：{}", errMsg);
             }
             return accMsg;
         } catch (IOException e) {
