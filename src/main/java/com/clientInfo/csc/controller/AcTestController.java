@@ -40,6 +40,8 @@ public class AcTestController {
     @Value("${coreUrl}")
     private String coreUrl;
 
+    private static final int TIME_OUT = 1000;
+
     @PostMapping("/card")
     private Object card(HttpServletRequest request, @RequestBody Map<String, String> map) {
         if (Objects.nonNull(map.get("cardId")) && Objects.nonNull(cardStr.get(map.get("cardId")))) {
@@ -47,7 +49,7 @@ public class AcTestController {
             return getResultVo();
         }
         try {
-            String postResult = HttpUtil.post(coreUrl + "card", JSONUtil.toJsonStr(map));
+            String postResult = HttpUtil.post(coreUrl + "card", JSONUtil.toJsonStr(map), TIME_OUT);
             JSONObject parseResult = JSONUtil.parseObj(postResult);
             String resultCls = parseResult.getStr("resultCls");
             log.info("card_接收到客户端请求:{}，调用中台返回结果:{}", JSONUtil.toJsonStr(map), postResult);
@@ -65,7 +67,7 @@ public class AcTestController {
             return getResultVo();
         }
         try {
-            String postResult = HttpUtil.post(coreUrl + "qrcode", JSONUtil.toJsonStr(map));
+            String postResult = HttpUtil.post(coreUrl + "qrcode", JSONUtil.toJsonStr(map), TIME_OUT);
             JSONObject parseResult = JSONUtil.parseObj(postResult);
             String resultCls = parseResult.getStr("resultCls");
             log.info("qrcode_接收到客户端请求:{}，调用中台返回结果:{}", JSONUtil.toJsonStr(map), postResult);
@@ -87,7 +89,7 @@ public class AcTestController {
         try {
             param = getParams(request);
             log.info("connect_接收到客户端请求:{}", param);
-            String postResult = HttpUtil.post(coreUrl + "connect", param);
+            String postResult = HttpUtil.post(coreUrl + "connect", param, TIME_OUT);
             log.info("connect_接收到客户端请求:{}，调用中台返回结果:{}", param, postResult);
         } catch (Exception e) {
             log.info("connect_接收到客户端请求:{},异常--》", param, e);
