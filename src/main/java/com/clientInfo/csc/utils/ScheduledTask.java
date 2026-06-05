@@ -362,16 +362,16 @@ public class ScheduledTask {
                     logger.debug("isReachable2耗时: " + (System.currentTimeMillis() - start));
                 }
             }));
-            executor.execute(() -> {
-                long start = System.currentTimeMillis();
-                try {
-                    nodesStatusMap = NlbUtil.getNodesStatus();
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                } finally {
-                    logger.debug("getNodesStatus耗时: " + (System.currentTimeMillis() - start));
-                }
-            });
+//            executor.execute(() -> {
+//                long start = System.currentTimeMillis();
+//                try {
+//                    nodesStatusMap = NlbUtil.getNodesStatus();
+//                } catch (Exception e) {
+//                    throw new RuntimeException(e);
+//                } finally {
+//                    logger.debug("getNodesStatus耗时: " + (System.currentTimeMillis() - start));
+//                }
+//            });
         } catch (Exception e) {
             logger.error("checkOneselfStatus_catch_err:{}", e.getMessage(), e);
         }

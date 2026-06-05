@@ -3,10 +3,12 @@ package com.clientInfo.csc.controller;
 import cn.hutool.http.HttpUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.clientInfo.csc.utils.AesUtil;
 import com.clientInfo.csc.vo.ResultVo;
 import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.PropertySource;
@@ -44,7 +46,12 @@ public class AcTestController {
 
     @PostMapping("/card")
     private Object card(HttpServletRequest request, @RequestBody Map<String, String> map) {
-        if (Objects.nonNull(map.get("cardId")) && Objects.nonNull(cardStr.get(map.get("cardId")))) {
+        String cardId = map.get("cardId");
+        if (StringUtils.isBlank(cardId)) {
+            log.info("card_接收到客户端请求:{},缺少必要参数,拒绝！", JSONUtil.toJsonStr(map));
+            return new ResultVo("90");
+        }
+        if (Objects.nonNull(cardStr.get(cardId))) {
             log.info("card_接收到客户端请求:{},本地验证通过！", JSONUtil.toJsonStr(map));
             return getResultVo();
         }
@@ -62,9 +69,25 @@ public class AcTestController {
 
     @PostMapping("/qrcode")
     private Object qrcode(HttpServletRequest request, @RequestBody Map<String, String> map) {
-        if (Objects.nonNull(map.get("qrcode")) && Objects.nonNull(qrcodeStr.get(map.get("qrcode")))) {
-            log.info("qrcode_接收到客户端请求:{},本地验证通过！", JSONUtil.toJsonStr(map));
-            return getResultVo();
+
+        String qrcode = map.get("qrcode");
+        if (StringUtils.isBlank(qrcode)) {
+            log.error("qrcode_接收到客户端请求:{},缺少必要参数,拒绝！", JSONUtil.toJsonStr(map));
+            return new ResultVo("90");
+        }
+        if (qrcode.startsWith("GJDS")) {
+            try {
+                String deQr = AesUtil.decrypt(qrcode.replace("GJDS", ""));
+                if (Objects.nonNull(qrcodeStr.get(deQr))) {
+                    log.info("qrcode_接收到客户端请求:{},本地验证二维码[{}]通过！", JSONUtil.toJsonStr(map),deQr);
+                    return getResultVo();
+                }else{
+                    log.error("qrcode_接收到客户端请求:{},本地未找到此二维码[{}]配置！", JSONUtil.toJsonStr(map),deQr);
+                }
+            } catch (Exception e) {
+                log.error("qrcode_接收到客户端请求:{}，解密数据异常 --》", JSONUtil.toJsonStr(map), e);
+            }
+            return new ResultVo("90");
         }
         try {
             String postResult = HttpUtil.post(coreUrl + "qrcode", JSONUtil.toJsonStr(map), TIME_OUT);
