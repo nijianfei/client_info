@@ -27,7 +27,7 @@ public class AesUtil {
     }
 
     public static void main(String[] args) throws Exception {
-        String original = "TEST_QR_T1";
+        String original = "TEST_QR_T2";
         String enc = encrypt(original);
         String dec = decrypt(enc);
 
