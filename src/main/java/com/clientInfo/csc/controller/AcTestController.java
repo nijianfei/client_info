@@ -158,7 +158,9 @@ public class AcTestController {
             log.info("connect_接收到客户端[本地策略:{}]请求:{}", testIsConnect, param);
             String postResult = HttpUtil.post(coreUrl + "connect", param, requestTimeOut);
             log.info("connect_接收到客户端请求:{}，调用中台返回结果:{}", param, postResult);
-            return getResultVo();
+            JSONObject parseResult = JSONUtil.parseObj(postResult);
+            String resultCls = parseResult.getStr("resultCls");
+            return new ResultVo(resultCls);
         } catch (Exception e) {
             log.info("connect_接收到客户端请求:{},异常--》", param, e);
             if (testIsConnect) {
